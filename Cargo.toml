@@ -8,3 +8,5 @@ edition = "2021"
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 warp = "0.3"
+mongodb = "2.2.2"
+dotenv = "0.10.0"
