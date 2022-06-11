@@ -1,33 +1,33 @@
-extern crate dotenv;
+mod auth;
 
-use dotenv::dotenv;
-use mongodb::{bson::doc, options::ClientOptions, Client};
-use std::env;
+use dotenv;
+use tokio;
+use std::{env, error::Error};
+use mongodb::{options::{ClientOptions}, Client, bson::doc};
 use warp::Filter;
 
+use crate::auth::auth_filter;
+
 #[tokio::main]
-async fn main() -> mongodb::error::Result<()> {
-    dotenv().ok();
+async fn main() -> Result<(), Box<dyn Error>> {
+    dotenv::dotenv().ok();
+    let client_uri = env::var("MONGODB_URI").expect("You must set the MONGODB_URI .env");
+    let options = ClientOptions::parse(&client_uri).await?;
+    let client = Client::with_options(options)?;
+    let users = client.database("rusty_db").collection("users");
+    let user = doc! { "password": "1984", "username": "GeorgeOrwell" };
+    let insert_result = users.insert_one(user, None).await?;
+    println!("New document ID: {}", insert_result.inserted_id);
 
-    let mongo_user_name = env::var("MONGO_USERNAME").unwrap();
-    let mongo_password = env::var("MONGO_PASSWORD").unwrap();
-    let mongo_cluster_url = env::var("MONGO_CLUSTER_URL").unwrap();
-    let mongo_database = env::var("MONGO_DATABASE").unwrap();
-    let mongo_connection_string = format!(
-        "mongodb+srv://{}:{}@{}/?retryWrites=true&w=majority",
-        mongo_user_name, mongo_password, mongo_cluster_url
-    );
+    let apis = auth_filter();
+    let welcome = warp::path::end().map(|| "Welcome to my api");
 
-    let client_options = ClientOptions::parse(mongo_connection_string).await?;
-    let client = Client::with_options(client_options)?;
-    let database = client.database(&mongo_database);
-
-    database.run_command(doc! {"ping": 1}, None).await?;
-    println!("Connected successfully.");
-
-    let hello = warp::path!("hello" / String).map(|name| format!("Hello, {}!", name));
-
-    warp::serve(hello).run(([127, 0, 0, 1], 3000)).await;
+    let routes = apis.or(welcome);
+    warp::serve(routes).run(([127, 0, 0, 1], 3000)).await;
 
     Ok(())
 }
+
+
+// https://www.mongodb.com/developer/languages/rust/rust-mongodb-crud-tutorial/
+// https://www.youtube.com/watch?v=HNnbIW2Kzbc
